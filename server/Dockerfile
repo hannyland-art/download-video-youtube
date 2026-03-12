@@ -1,8 +1,9 @@
 FROM node:22-slim
 
-# Install system dependencies (curl for healthcheck, ca-certificates for HTTPS)
+# Install system dependencies (python3 for yt-dlp-exec install, curl for healthcheck)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && apt-get install -y --no-install-recommends curl ca-certificates python3 \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user for security
