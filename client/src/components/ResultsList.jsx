@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { getDownloadUrl } from "../api";
+import { getDownloadUrl, getToken } from "../api";
 
 export default function ResultsList({ results }) {
   const [downloadingId, setDownloadingId] = useState(null);
@@ -11,7 +11,9 @@ export default function ResultsList({ results }) {
 
     try {
       const url = getDownloadUrl(videoId);
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));

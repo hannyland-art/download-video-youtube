@@ -1,4 +1,114 @@
 /* ======================== */
+/*  Login Page              */
+/* ======================== */
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.login-card {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+  padding: 2.5rem 2rem;
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+}
+
+.login-title {
+  font-size: 1.8rem;
+  margin: 0;
+  background: linear-gradient(90deg, #ff6fd8, #3813c2);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.login-subtitle {
+  color: #aaa;
+  margin: 0.5rem 0 1.5rem;
+  font-size: 0.95rem;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.login-form input {
+  padding: 0.85rem 1.2rem;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f0f0f0;
+  outline: none;
+  transition: background 0.2s;
+}
+
+.login-form input::placeholder {
+  color: #888;
+}
+
+.login-form input:focus {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.login-form button {
+  padding: 0.85rem;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: linear-gradient(135deg, #ff6fd8, #3813c2);
+  color: #fff;
+  margin-top: 0.5rem;
+  transition: opacity 0.2s;
+}
+
+.login-form button:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.login-form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.login-error {
+  color: #ff6b6b;
+  font-size: 0.9rem;
+}
+
+/* ======================== */
+/*  Logout Button           */
+/* ======================== */
+
+.logout-btn {
+  margin-top: 0.8rem;
+  padding: 0.4rem 1.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  background: transparent;
+  color: #aaa;
+  transition: all 0.2s;
+}
+
+.logout-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+/* ======================== */
 /*  Global & App Layout     */
 /* ======================== */
 
