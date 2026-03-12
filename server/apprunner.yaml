@@ -1,0 +1,14 @@
+version: 1.0
+runtime: nodejs18
+build:
+  commands:
+    build:
+      - npm install
+      - apt-get update && apt-get install -y ffmpeg
+run:
+  command: node index.js
+  network:
+    port: 5000
+  env:
+    - name: PORT
+      value: "5000"
