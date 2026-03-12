@@ -8,5 +8,5 @@ export async function searchSongs(query) {
 }
 
 export function getDownloadUrl(videoId) {
-  return `${API_BASE}/download?videoId=${encodeURIComponent(videoId)}`;
+  return `${API_BASE}/download/${encodeURIComponent(videoId)}`;
 }

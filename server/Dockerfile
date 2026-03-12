@@ -1,8 +1,8 @@
 FROM node:22-alpine
 
-# Install system dependencies (ffmpeg for audio conversion, python3 for yt-dlp, curl for healthcheck)
-RUN apk add --no-cache ffmpeg curl python3 \
-    && ffmpeg -version \
+# Install system dependencies (python3 for yt-dlp install, curl for healthcheck)
+# ffmpeg is provided by the ffmpeg-static npm package
+RUN apk add --no-cache curl python3 \
     && python3 --version \
     && echo "System dependencies installed successfully"
 

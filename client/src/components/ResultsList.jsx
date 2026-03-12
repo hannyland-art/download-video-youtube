@@ -3,11 +3,11 @@ import { getDownloadUrl } from "../api";
 export default function ResultsList({ results }) {
   if (!results || results.length === 0) return null;
 
-  const handleDownload = (videoId, title) => {
+  const handleDownload = (videoId) => {
     const url = getDownloadUrl(videoId);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${title}.mp3`;
+    a.style.display = "none";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -34,7 +34,7 @@ export default function ResultsList({ results }) {
               <p className="channel-name">{video.channel}</p>
               <button
                 className="download-btn"
-                onClick={() => handleDownload(video.videoId, video.title)}
+                onClick={() => handleDownload(video.videoId)}
               >
                 Download MP3
               </button>
