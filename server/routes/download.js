@@ -1,6 +1,7 @@
 const express = require("express");
 const { spawn } = require("child_process");
 const path = require("path");
+const fs = require("fs");
 const ffmpegPath = require("ffmpeg-static");
 
 const router = express.Router();
@@ -10,6 +11,9 @@ const ytDlpPath = path.join(__dirname, "..", "node_modules", "yt-dlp-exec", "bin
 
 // Resolve the node binary path (yt-dlp needs a JS runtime)
 const nodePath = process.execPath;
+
+// Path to the optional cookies file (place cookies.txt in the server/ directory)
+const cookiesPath = path.join(__dirname, "..", "cookies.txt");
 
 /**
  * Helper to kill a spawned process safely.
@@ -75,6 +79,11 @@ router.get("/:videoId", async (req, res) => {
       "--ffmpeg-location", ffmpegPath,
       "--js-runtimes", `node:${nodePath}`,
     ];
+
+    // Add cookies if the file exists (needed for YouTube bot detection on cloud servers)
+    if (fs.existsSync(cookiesPath)) {
+      ytDlpCommonArgs.push("--cookies", cookiesPath);
+    }
 
     // --- Step 1: Get the video title via JSON ---
     let title = videoId;
