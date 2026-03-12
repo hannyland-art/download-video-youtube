@@ -1,13 +1,12 @@
-FROM node:22-alpine
+FROM node:22-slim
 
-# Install system dependencies (python3 for yt-dlp install, curl for healthcheck)
-# ffmpeg is provided by the ffmpeg-static npm package
-RUN apk add --no-cache curl python3 \
-    && python3 --version \
-    && echo "System dependencies installed successfully"
+# Install system dependencies (curl for healthcheck, ca-certificates for HTTPS)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user for security
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
 WORKDIR /app
 
@@ -21,8 +20,9 @@ RUN npm ci --omit=dev \
 # Copy application code
 COPY . .
 
-# Ensure yt-dlp binary is accessible and working
-RUN npx yt-dlp-exec --version || echo "Warning: yt-dlp version check failed"
+# Verify yt-dlp and ffmpeg-static binaries work
+RUN node -e "const p = require('ffmpeg-static'); const {execSync} = require('child_process'); console.log('ffmpeg:', execSync(p + ' -version').toString().split('\n')[0]);"
+RUN node -e "const p = require('path').join(__dirname,'node_modules','yt-dlp-exec','bin','yt-dlp'); const {execSync} = require('child_process'); console.log('yt-dlp:', execSync(p + ' --version').toString().trim());"
 
 # Remove unnecessary files from the image
 RUN rm -f Dockerfile apprunner.yaml .dockerignore

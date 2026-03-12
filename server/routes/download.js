@@ -24,11 +24,38 @@ function killSafe(proc) {
   }
 }
 
+/**
+ * Spawn a process and collect its stdout as a Buffer.
+ * Returns { code, stdout, stderr }.
+ */
+function spawnCollect(cmd, args, timeoutMs = 30000) {
+  return new Promise((resolve) => {
+    const proc = spawn(cmd, args);
+    const stdoutChunks = [];
+    let stderr = "";
+
+    proc.stdout.on("data", (data) => stdoutChunks.push(data));
+    proc.stderr.on("data", (data) => { stderr += data.toString(); });
+
+    proc.on("error", (err) => {
+      resolve({ code: -1, stdout: Buffer.alloc(0), stderr: err.message });
+    });
+
+    proc.on("close", (code) => {
+      resolve({ code, stdout: Buffer.concat(stdoutChunks), stderr });
+    });
+
+    setTimeout(() => {
+      proc.kill();
+      resolve({ code: -1, stdout: Buffer.alloc(0), stderr: "Timeout" });
+    }, timeoutMs);
+  });
+}
+
 router.get("/:videoId", async (req, res) => {
   let ytDlpProc = null;
   let ffmpegProc = null;
 
-  // Cleanup function — kill both processes
   const cleanup = () => {
     killSafe(ytDlpProc);
     killSafe(ffmpegProc);
@@ -43,140 +70,140 @@ router.get("/:videoId", async (req, res) => {
 
     const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-    // Common yt-dlp args: tell it where ffmpeg and the JS runtime are
+    // Common yt-dlp args
     const ytDlpCommonArgs = [
       "--ffmpeg-location", ffmpegPath,
       "--js-runtimes", `node:${nodePath}`,
     ];
 
-    // Get the video title via JSON (--get-title has encoding issues on Windows)
+    // --- Step 1: Get the video title via JSON ---
     let title = videoId;
     try {
-      title = await new Promise((resolve, reject) => {
-        const chunks = [];
-        const proc = spawn(ytDlpPath, [
-          ...ytDlpCommonArgs,
-          "--dump-single-json",
-          "--skip-download",
-          url
-        ]);
-        proc.stdout.on("data", (data) => { chunks.push(data); });
-        proc.stderr.on("data", (data) => { console.log("yt-dlp title stderr:", data.toString()); });
-        proc.on("close", (code) => {
-          if (code === 0) {
-            try {
-              const json = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
-              resolve(json.title || videoId);
-            } catch {
-              reject(new Error("Failed to parse JSON"));
-            }
-          } else {
-            reject(new Error(`yt-dlp exited with code ${code}`));
-          }
-        });
-        proc.on("error", reject);
-        // Timeout after 20 seconds
-        setTimeout(() => { proc.kill(); reject(new Error("Timeout")); }, 20000);
+      const result = await spawnCollect(ytDlpPath, [
+        ...ytDlpCommonArgs,
+        "--dump-single-json",
+        "--skip-download",
+        url,
+      ], 20000);
+
+      if (result.stderr) console.log("yt-dlp title stderr:", result.stderr);
+
+      if (result.code === 0 && result.stdout.length > 0) {
+        const json = JSON.parse(result.stdout.toString("utf-8"));
+        title = json.title || videoId;
+      } else {
+        console.error("yt-dlp title fetch failed with code:", result.code);
+      }
+    } catch (err) {
+      console.error("Title fetch error:", err.message);
+    }
+
+    // --- Step 2: Download audio and convert to MP3 ---
+    // We collect everything into a buffer first so we can return a proper error if it fails
+    const mp3Result = await new Promise((resolve) => {
+      const mp3Chunks = [];
+      let ytDlpStderr = "";
+      let ffmpegStderr = "";
+      let hasError = false;
+
+      ytDlpProc = spawn(ytDlpPath, [
+        ...ytDlpCommonArgs,
+        url,
+        "-f", "bestaudio",
+        "-o", "-",
+        "--no-playlist",
+      ]);
+
+      ffmpegProc = spawn(ffmpegPath, [
+        "-i", "pipe:0",
+        "-vn",
+        "-ab", "192k",
+        "-ar", "44100",
+        "-f", "mp3",
+        "pipe:1",
+      ]);
+
+      // Error handlers on all streams to prevent EPIPE crashes
+      ytDlpProc.stdout.on("error", () => {});
+      ytDlpProc.stdin?.on("error", () => {});
+      ffmpegProc.stdout.on("error", () => {});
+      ffmpegProc.stdin.on("error", () => {});
+
+      // Pipe yt-dlp → ffmpeg
+      ytDlpProc.stdout.pipe(ffmpegProc.stdin);
+
+      // Collect ffmpeg output
+      ffmpegProc.stdout.on("data", (data) => mp3Chunks.push(data));
+
+      ytDlpProc.stderr.on("data", (data) => {
+        ytDlpStderr += data.toString();
       });
-    } catch {
-      // If we can't get the title, use videoId as fallback
+      ffmpegProc.stderr.on("data", (data) => {
+        ffmpegStderr += data.toString();
+      });
+
+      ytDlpProc.on("error", (err) => {
+        hasError = true;
+        console.error("yt-dlp spawn error:", err.message);
+      });
+
+      ffmpegProc.on("error", (err) => {
+        hasError = true;
+        console.error("ffmpeg spawn error:", err.message);
+      });
+
+      ytDlpProc.on("close", (code) => {
+        if (code !== 0) {
+          console.error(`yt-dlp exited with code ${code}`);
+          console.error("yt-dlp stderr:", ytDlpStderr);
+          try { ffmpegProc.stdin.end(); } catch { /* ignore */ }
+        }
+      });
+
+      ffmpegProc.on("close", (code) => {
+        if (code !== 0 && code !== null) {
+          console.error(`ffmpeg exited with code ${code}`);
+          console.error("ffmpeg stderr:", ffmpegStderr);
+        }
+        const buffer = Buffer.concat(mp3Chunks);
+        resolve({
+          success: !hasError && buffer.length > 0,
+          buffer,
+          ytDlpStderr,
+          ffmpegStderr,
+        });
+      });
+
+      // If the client disconnects, abort
+      req.on("close", () => {
+        if (!res.writableEnded) {
+          console.log("Client disconnected, cleaning up download processes.");
+          cleanup();
+          resolve({ success: false, buffer: Buffer.alloc(0), ytDlpStderr: "", ffmpegStderr: "Client disconnected" });
+        }
+      });
+    });
+
+    // --- Step 3: Send the response ---
+    if (!mp3Result.success || mp3Result.buffer.length === 0) {
+      if (!res.headersSent) {
+        console.error("Download produced no data. yt-dlp stderr:", mp3Result.ytDlpStderr);
+        return res.status(500).json({
+          error: "Failed to download or convert the audio. The video may be unavailable or restricted.",
+          details: mp3Result.ytDlpStderr.substring(0, 500),
+        });
+      }
+      return;
     }
 
     // Sanitize filename — only remove characters that are invalid in filenames
     const safeTitle = title.replace(/[<>:"/\\|?*]/g, "").replace(/\s+/g, "_");
+    const encodedTitle = encodeURIComponent(safeTitle);
 
     res.setHeader("Content-Type", "audio/mpeg");
-    // Use RFC 5987 encoding (filename*=UTF-8'') so browsers handle Hebrew/Unicode filenames correctly
-    const encodedTitle = encodeURIComponent(safeTitle);
+    res.setHeader("Content-Length", mp3Result.buffer.length);
     res.setHeader("Content-Disposition", `attachment; filename="${encodedTitle}.mp3"; filename*=UTF-8''${encodedTitle}.mp3`);
-
-    // Use yt-dlp to extract audio and pipe through ffmpeg to convert to mp3
-    ytDlpProc = spawn(ytDlpPath, [
-      ...ytDlpCommonArgs,
-      url,
-      "-f", "bestaudio",
-      "-o", "-",           // Output to stdout
-      "--no-playlist",
-    ]);
-
-    ffmpegProc = spawn(ffmpegPath, [
-      "-i", "pipe:0",     // Read from stdin
-      "-vn",              // No video
-      "-ab", "192k",      // Audio bitrate
-      "-ar", "44100",     // Audio sample rate
-      "-f", "mp3",        // Output format
-      "pipe:1",           // Output to stdout
-    ]);
-
-    // Attach error handlers on ALL streams to prevent unhandled EPIPE crashes
-    ytDlpProc.stdout.on("error", (err) => {
-      console.log("yt-dlp stdout error (ignored):", err.code);
-    });
-    ytDlpProc.stdin?.on("error", (err) => {
-      console.log("yt-dlp stdin error (ignored):", err.code);
-    });
-    ffmpegProc.stdout.on("error", (err) => {
-      console.log("ffmpeg stdout error (ignored):", err.code);
-    });
-    ffmpegProc.stdin.on("error", (err) => {
-      console.log("ffmpeg stdin error (ignored):", err.code);
-    });
-
-    // Pipe yt-dlp output into ffmpeg
-    ytDlpProc.stdout.pipe(ffmpegProc.stdin);
-
-    // Pipe ffmpeg output to the HTTP response
-    ffmpegProc.stdout.pipe(res);
-
-    // Handle process-level errors
-    ytDlpProc.stderr.on("data", (data) => {
-      console.log("yt-dlp:", data.toString());
-    });
-
-    ffmpegProc.stderr.on("data", () => {
-      // ffmpeg writes progress to stderr, which is normal
-    });
-
-    ytDlpProc.on("error", (err) => {
-      console.error("yt-dlp spawn error:", err.message);
-      cleanup();
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Failed to download audio." });
-      }
-    });
-
-    ffmpegProc.on("error", (err) => {
-      console.error("ffmpeg spawn error:", err.message);
-      cleanup();
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Failed to convert audio. Make sure FFmpeg is installed." });
-      }
-    });
-
-    ytDlpProc.on("close", (code) => {
-      if (code !== 0) {
-        console.error(`yt-dlp exited with code ${code}`);
-        try { ffmpegProc.stdin.end(); } catch { /* ignore */ }
-      }
-    });
-
-    ffmpegProc.on("close", (code) => {
-      if (code !== 0 && code !== null) {
-        console.error(`ffmpeg exited with code ${code}`);
-      }
-    });
-
-    // If the client disconnects (cancel download), clean up gracefully
-    req.on("close", () => {
-      console.log("Client disconnected, cleaning up download processes.");
-      cleanup();
-    });
-
-    // Catch errors on the response stream itself (e.g. client abort)
-    res.on("error", (err) => {
-      console.log("Response stream error (ignored):", err.code);
-      cleanup();
-    });
+    res.send(mp3Result.buffer);
   } catch (error) {
     console.error("Download error:", error.message);
     cleanup();
