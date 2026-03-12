@@ -1,9 +1,10 @@
 FROM node:22-alpine
 
-# Install system dependencies (ffmpeg for audio conversion, curl for healthcheck)
-RUN apk add --no-cache ffmpeg curl \
+# Install system dependencies (ffmpeg for audio conversion, python3 for yt-dlp, curl for healthcheck)
+RUN apk add --no-cache ffmpeg curl python3 \
     && ffmpeg -version \
-    && echo "ffmpeg installed successfully"
+    && python3 --version \
+    && echo "System dependencies installed successfully"
 
 # Create a non-root user for security
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
