@@ -112,6 +112,22 @@
   color: #ddd;
 }
 
+.download-message {
+  text-align: center;
+  color: #00c9ff;
+  background: rgba(0, 201, 255, 0.08);
+  border-radius: 10px;
+  padding: 0.8rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .results-grid {
   display: flex;
   flex-direction: column;
@@ -195,8 +211,14 @@
   transition: opacity 0.2s;
 }
 
-.download-btn:hover {
+.download-btn:hover:not(:disabled) {
   opacity: 0.85;
+}
+
+.download-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: linear-gradient(135deg, #888, #aaa);
 }
 
 /* ======================== */

@@ -2,6 +2,8 @@ const express = require("express");
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
+const crypto = require("crypto");
 const ffmpegPath = require("ffmpeg-static");
 
 const router = express.Router();
@@ -16,21 +18,41 @@ const nodePath = process.execPath;
 const cookiesPath = path.join(__dirname, "..", "cookies.txt");
 
 /**
- * Helper to kill a spawned process safely.
+ * Spawn a process and wait for it to finish.
+ * Returns { code, stderr }.
  */
-function killSafe(proc) {
-  try {
-    if (proc && !proc.killed) {
+function spawnAndWait(cmd, args, timeoutMs = 120000) {
+  return new Promise((resolve) => {
+    const proc = spawn(cmd, args);
+    let stderr = "";
+
+    proc.stdout.on("data", (data) => {
+      console.log("yt-dlp:", data.toString());
+    });
+    proc.stderr.on("data", (data) => {
+      stderr += data.toString();
+      console.log("yt-dlp:", data.toString());
+    });
+
+    proc.on("error", (err) => {
+      resolve({ code: -1, stderr: err.message, proc });
+    });
+
+    proc.on("close", (code) => {
+      resolve({ code, stderr, proc });
+    });
+
+    const timer = setTimeout(() => {
       proc.kill();
-    }
-  } catch {
-    // ignore — process may already be dead
-  }
+      resolve({ code: -1, stderr: "Timeout: download took too long", proc });
+    }, timeoutMs);
+
+    proc.on("close", () => clearTimeout(timer));
+  });
 }
 
 /**
  * Spawn a process and collect its stdout as a Buffer.
- * Returns { code, stdout, stderr }.
  */
 function spawnCollect(cmd, args, timeoutMs = 30000) {
   return new Promise((resolve) => {
@@ -56,14 +78,23 @@ function spawnCollect(cmd, args, timeoutMs = 30000) {
   });
 }
 
-router.get("/:videoId", async (req, res) => {
-  let ytDlpProc = null;
-  let ffmpegProc = null;
+/**
+ * Delete a file if it exists.
+ */
+function cleanupFile(filePath) {
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch {
+    // ignore
+  }
+}
 
-  const cleanup = () => {
-    killSafe(ytDlpProc);
-    killSafe(ffmpegProc);
-  };
+router.get("/:videoId", async (req, res) => {
+  // Create a unique temp file path for this download
+  const tempId = crypto.randomBytes(8).toString("hex");
+  const tempFile = path.join(os.tmpdir(), `yt-mp3-${tempId}.mp3`);
 
   try {
     const { videoId } = req.params;
@@ -93,129 +124,99 @@ router.get("/:videoId", async (req, res) => {
         "--dump-single-json",
         "--skip-download",
         url,
-      ], 20000);
-
-      if (result.stderr) console.log("yt-dlp title stderr:", result.stderr);
+      ], 30000);
 
       if (result.code === 0 && result.stdout.length > 0) {
         const json = JSON.parse(result.stdout.toString("utf-8"));
         title = json.title || videoId;
       } else {
-        console.error("yt-dlp title fetch failed with code:", result.code);
+        console.error("yt-dlp title fetch failed with code:", result.code, result.stderr);
       }
     } catch (err) {
       console.error("Title fetch error:", err.message);
     }
 
-    // --- Step 2: Download audio and convert to MP3 ---
-    // We collect everything into a buffer first so we can return a proper error if it fails
-    const mp3Result = await new Promise((resolve) => {
-      const mp3Chunks = [];
-      let ytDlpStderr = "";
-      let ffmpegStderr = "";
-      let hasError = false;
+    // --- Step 2: Download and convert to MP3 using temp file ---
+    // Let yt-dlp handle everything: download + extract audio + convert to mp3
+    const dlResult = await spawnAndWait(ytDlpPath, [
+      ...ytDlpCommonArgs,
+      url,
+      "-x",                          // Extract audio
+      "--audio-format", "mp3",       // Convert to mp3
+      "--audio-quality", "192K",     // 192kbps bitrate
+      "-o", tempFile,                // Output to temp file
+      "--no-playlist",
+      "--no-part",                   // Don't use .part files
+      "--force-overwrites",
+    ], 120000);
 
-      ytDlpProc = spawn(ytDlpPath, [
-        ...ytDlpCommonArgs,
-        url,
-        "-f", "bestaudio",
-        "-o", "-",
-        "--no-playlist",
-      ]);
-
-      ffmpegProc = spawn(ffmpegPath, [
-        "-i", "pipe:0",
-        "-vn",
-        "-ab", "192k",
-        "-ar", "44100",
-        "-f", "mp3",
-        "pipe:1",
-      ]);
-
-      // Error handlers on all streams to prevent EPIPE crashes
-      ytDlpProc.stdout.on("error", () => {});
-      ytDlpProc.stdin?.on("error", () => {});
-      ffmpegProc.stdout.on("error", () => {});
-      ffmpegProc.stdin.on("error", () => {});
-
-      // Pipe yt-dlp → ffmpeg
-      ytDlpProc.stdout.pipe(ffmpegProc.stdin);
-
-      // Collect ffmpeg output
-      ffmpegProc.stdout.on("data", (data) => mp3Chunks.push(data));
-
-      ytDlpProc.stderr.on("data", (data) => {
-        ytDlpStderr += data.toString();
-      });
-      ffmpegProc.stderr.on("data", (data) => {
-        ffmpegStderr += data.toString();
-      });
-
-      ytDlpProc.on("error", (err) => {
-        hasError = true;
-        console.error("yt-dlp spawn error:", err.message);
-      });
-
-      ffmpegProc.on("error", (err) => {
-        hasError = true;
-        console.error("ffmpeg spawn error:", err.message);
-      });
-
-      ytDlpProc.on("close", (code) => {
-        if (code !== 0) {
-          console.error(`yt-dlp exited with code ${code}`);
-          console.error("yt-dlp stderr:", ytDlpStderr);
-          try { ffmpegProc.stdin.end(); } catch { /* ignore */ }
-        }
-      });
-
-      ffmpegProc.on("close", (code) => {
-        if (code !== 0 && code !== null) {
-          console.error(`ffmpeg exited with code ${code}`);
-          console.error("ffmpeg stderr:", ffmpegStderr);
-        }
-        const buffer = Buffer.concat(mp3Chunks);
-        resolve({
-          success: !hasError && buffer.length > 0,
-          buffer,
-          ytDlpStderr,
-          ffmpegStderr,
-        });
-      });
-
-      // If the client disconnects, abort
-      req.on("close", () => {
-        if (!res.writableEnded) {
-          console.log("Client disconnected, cleaning up download processes.");
-          cleanup();
-          resolve({ success: false, buffer: Buffer.alloc(0), ytDlpStderr: "", ffmpegStderr: "Client disconnected" });
-        }
-      });
-    });
-
-    // --- Step 3: Send the response ---
-    if (!mp3Result.success || mp3Result.buffer.length === 0) {
-      if (!res.headersSent) {
-        console.error("Download produced no data. yt-dlp stderr:", mp3Result.ytDlpStderr);
-        return res.status(500).json({
-          error: "Failed to download or convert the audio. The video may be unavailable or restricted.",
-          details: mp3Result.ytDlpStderr.substring(0, 500),
-        });
-      }
+    // Check if client disconnected during download
+    if (res.writableEnded) {
+      cleanupFile(tempFile);
       return;
     }
 
-    // Sanitize filename — only remove characters that are invalid in filenames
+    // yt-dlp may output to a slightly different path (adding extension)
+    // Find the actual output file
+    let actualFile = tempFile;
+    if (!fs.existsSync(tempFile)) {
+      // yt-dlp might have added .mp3 if the tempFile didn't end with it
+      const altFile = tempFile.replace(/\.mp3$/, "") + ".mp3";
+      if (fs.existsSync(altFile)) {
+        actualFile = altFile;
+      } else {
+        console.error("Download failed - no output file found.");
+        console.error("yt-dlp stderr:", dlResult.stderr);
+        return res.status(500).json({
+          error: "Failed to download or convert the audio. The video may be unavailable or restricted.",
+          details: dlResult.stderr.substring(0, 500),
+        });
+      }
+    }
+
+    const stat = fs.statSync(actualFile);
+    if (stat.size === 0) {
+      cleanupFile(actualFile);
+      return res.status(500).json({
+        error: "Download produced an empty file.",
+        details: dlResult.stderr.substring(0, 500),
+      });
+    }
+
+    // --- Step 3: Send the MP3 file ---
     const safeTitle = title.replace(/[<>:"/\\|?*]/g, "").replace(/\s+/g, "_");
     const encodedTitle = encodeURIComponent(safeTitle);
 
     res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Length", mp3Result.buffer.length);
+    res.setHeader("Content-Length", stat.size);
     res.setHeader("Content-Disposition", `attachment; filename="${encodedTitle}.mp3"; filename*=UTF-8''${encodedTitle}.mp3`);
-    res.send(mp3Result.buffer);
+
+    const fileStream = fs.createReadStream(actualFile);
+    fileStream.pipe(res);
+
+    fileStream.on("end", () => {
+      cleanupFile(actualFile);
+    });
+
+    fileStream.on("error", (err) => {
+      console.error("File stream error:", err.message);
+      cleanupFile(actualFile);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to send the file." });
+      }
+    });
+
+    // Cleanup if client disconnects mid-stream
+    req.on("close", () => {
+      if (!res.writableEnded) {
+        console.log("Client disconnected, cleaning up.");
+        fileStream.destroy();
+        cleanupFile(actualFile);
+      }
+    });
   } catch (error) {
     console.error("Download error:", error.message);
-    cleanup();
+    cleanupFile(tempFile);
     if (!res.headersSent) {
       res.status(500).json({ error: "Failed to process download request." });
     }
