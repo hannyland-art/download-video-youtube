@@ -40,7 +40,7 @@ function authMiddleware(req, res, next) {
 
 // Routes
 app.use("/api/search", authMiddleware, searchRouter);
-app.use("/api/download", authMiddleware, downloadRouter);
+app.use("/api/download", downloadRouter);
 
 // Health check — App Runner pings "/" by default
 app.get("/", (req, res) => {

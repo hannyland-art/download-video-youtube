@@ -83,10 +83,11 @@ function spawnCollect(cmd, args, timeoutMs = 30000) {
 }
 
 // ==========================================================
-//  GET /file/:fileId — Serve the completed MP3 file
+//  POST /file/:fileId — Serve the completed MP3 file
+//  Using POST so CloudFront forwards Authorization header
 //  (MUST be defined before /:videoId to avoid route conflict)
 // ==========================================================
-router.get("/file/:fileId", (req, res) => {
+router.post("/file/:fileId", (req, res) => {
   const { fileId } = req.params;
   const entry = completedFiles.get(fileId);
 
@@ -126,9 +127,10 @@ router.get("/file/:fileId", (req, res) => {
 });
 
 // ==========================================================
-//  GET /:videoId — SSE progress stream
+//  POST /:videoId — SSE progress stream
+//  Using POST so CloudFront forwards Authorization header
 // ==========================================================
-router.get("/:videoId", async (req, res) => {
+router.post("/:videoId", async (req, res) => {
   const { videoId } = req.params;
 
   if (!videoId || typeof videoId !== "string") {
