@@ -26,8 +26,12 @@ app.post("/api/login", (req, res) => {
 });
 
 // Auth middleware — protect search and download routes
+// Accepts token from Authorization header OR ?token= query param
+// (CloudFront strips Authorization header from GET requests by default)
 function authMiddleware(req, res, next) {
-  const token = req.headers.authorization?.replace("Bearer ", "");
+  const token =
+    req.headers.authorization?.replace("Bearer ", "") ||
+    req.query.token;
   if (token && tokens.has(token)) {
     return next();
   }

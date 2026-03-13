@@ -13,10 +13,9 @@ export default function ResultsList({ results }) {
 
     try {
       // Phase 1: Connect to SSE progress stream
-      const url = getDownloadUrl(videoId);
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
+      // Use query param for token (CloudFront strips Authorization header from GET requests)
+      const url = `${getDownloadUrl(videoId)}?token=${encodeURIComponent(getToken())}`;
+      const response = await fetch(url);
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
@@ -77,9 +76,10 @@ export default function ResultsList({ results }) {
       }
 
       // Phase 2: Download the completed MP3 file
-      const fileResponse = await fetch(getFileUrl(fileId), {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
+      // Use query param for token (CloudFront strips Authorization header from GET requests)
+      const fileResponse = await fetch(
+        `${getFileUrl(fileId)}?token=${encodeURIComponent(getToken())}`
+      );
 
       if (!fileResponse.ok) {
         alert("Failed to download the file.");
