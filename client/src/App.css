@@ -222,20 +222,44 @@
   color: #ddd;
 }
 
-.download-message {
-  text-align: center;
-  color: #00c9ff;
+/* ======================== */
+/*  Progress Bar            */
+/* ======================== */
+
+.progress-container {
   background: rgba(0, 201, 255, 0.08);
-  border-radius: 10px;
-  padding: 0.8rem;
-  margin-bottom: 1rem;
-  font-weight: 600;
-  animation: pulse 1.5s ease-in-out infinite;
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+  margin-bottom: 1.2rem;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+.progress-text {
+  color: #00c9ff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.progress-bar-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00c9ff, #92fe9d);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-percent {
+  color: #aaa;
+  font-size: 0.8rem;
+  text-align: right;
+  margin-top: 0.3rem;
 }
 
 .results-grid {

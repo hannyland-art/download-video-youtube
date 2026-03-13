@@ -1,42 +1,70 @@
 const express = require("express");
-const YouTube = require("youtube-sr").default;
+const { spawn } = require("child_process");
+const path = require("path");
+const fs = require("fs");
 const https = require("https");
 const http = require("http");
-const { URL } = require("url");
 
 const router = express.Router();
 
-// Optional proxy URL for routing search/thumbnail traffic through a residential proxy
-const proxyUrl = process.env.PROXY_URL || "";
+// Resolve the yt-dlp binary path
+const ytDlpPath = path.join(__dirname, "..", "node_modules", "yt-dlp-exec", "bin", process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
+const nodePath = process.execPath;
+const cookiesPath = path.join(__dirname, "..", "cookies.txt");
 
-// Lazily create the proxy agent only if PROXY_URL is configured
-let proxyAgent = null;
-if (proxyUrl) {
-  const HttpsProxyAgent = require("https-proxy-agent");
-  proxyAgent = new HttpsProxyAgent(proxyUrl);
-  console.log("Search route: using proxy for YouTube requests");
+// Proxy is only used for downloads, not for search/thumbnails (too slow and unnecessary)
+
+/**
+ * Spawn yt-dlp and collect stdout as a string.
+ */
+function ytDlpSearch(args, timeoutMs = 30000) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ytDlpPath, args);
+    const chunks = [];
+    let stderr = "";
+
+    proc.stdout.on("data", (data) => chunks.push(data));
+    proc.stderr.on("data", (data) => { stderr += data.toString(); });
+
+    proc.on("error", (err) => reject(err));
+    proc.on("close", (code) => {
+      if (code === 0) {
+        resolve(Buffer.concat(chunks).toString("utf-8"));
+      } else {
+        reject(new Error(`yt-dlp exited with code ${code}: ${stderr.substring(0, 500)}`));
+      }
+    });
+
+    setTimeout(() => {
+      proc.kill();
+      reject(new Error("yt-dlp search timeout"));
+    }, timeoutMs);
+  });
+}
+
+/**
+ * Format seconds into MM:SS or H:MM:SS.
+ */
+function formatDuration(seconds) {
+  if (!seconds || isNaN(seconds)) return "N/A";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 /**
  * Fetches an image from a URL and returns it as a base64 data URI.
- * Routes through the proxy if configured.
- * Returns an empty string if the fetch fails.
  */
 function fetchImageAsBase64(url) {
   return new Promise((resolve) => {
     if (!url) return resolve("");
 
     const client = url.startsWith("https") ? https : http;
-    const options = new URL(url);
-
-    // Route through proxy if available
-    if (proxyAgent && url.startsWith("https")) {
-      options.agent = proxyAgent;
-    }
 
     client
-      .get(options, (response) => {
-        // Follow redirects
+      .get(url, (response) => {
         if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
           return fetchImageAsBase64(response.headers.location).then(resolve);
         }
@@ -51,8 +79,7 @@ function fetchImageAsBase64(url) {
         response.on("data", (chunk) => chunks.push(chunk));
         response.on("end", () => {
           const buffer = Buffer.concat(chunks);
-          const base64 = buffer.toString("base64");
-          resolve(`data:${contentType};base64,${base64}`);
+          resolve(`data:${contentType};base64,${buffer.toString("base64")}`);
         });
         response.on("error", () => resolve(""));
       })
@@ -68,21 +95,47 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "A valid song name is required." });
     }
 
-    const results = await YouTube.search(query.trim(), { limit: 10, type: "video" });
+    // Build yt-dlp args for search
+    const args = [
+      "--js-runtimes", `node:${nodePath}`,
+      `ytsearch10:${query.trim()}`,  // Search YouTube for top 10 results
+      "--dump-json",                  // Output JSON for each result
+      "--flat-playlist",              // Don't download, just get metadata
+      "--no-warnings",
+    ];
+
+    if (fs.existsSync(cookiesPath)) {
+      args.push("--cookies", cookiesPath);
+    }
+    // NOTE: No proxy for search — it's too slow and YouTube rarely blocks search/metadata requests
+
+    const output = await ytDlpSearch(args, 30000);
+
+    // yt-dlp outputs one JSON object per line
+    const lines = output.trim().split("\n").filter(Boolean);
+    const entries = lines.map((line) => {
+      try { return JSON.parse(line); } catch { return null; }
+    }).filter(Boolean);
 
     // Fetch all thumbnails in parallel and convert to base64
     const videos = await Promise.all(
-      results.map(async (video) => {
-        const thumbnailUrl = video.thumbnail?.url || "";
+      entries.map(async (entry) => {
+        // Pick the best thumbnail URL
+        const thumbnailUrl =
+          entry.thumbnail ||
+          (entry.thumbnails && entry.thumbnails.length > 0
+            ? entry.thumbnails[entry.thumbnails.length - 1].url
+            : "");
+
         const thumbnailBase64 = await fetchImageAsBase64(thumbnailUrl);
 
         return {
-          videoId: video.id,
-          title: video.title,
+          videoId: entry.id,
+          title: entry.title || "Unknown",
           thumbnail: thumbnailBase64,
-          duration: video.durationFormatted || "N/A",
-          channel: video.channel?.name || "Unknown",
-          url: video.url,
+          duration: formatDuration(entry.duration),
+          channel: entry.channel || entry.uploader || "Unknown",
+          url: entry.webpage_url || entry.url || `https://www.youtube.com/watch?v=${entry.id}`,
         };
       })
     );

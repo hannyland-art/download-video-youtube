@@ -22,3 +22,7 @@ export async function searchSongs(query) {
 export function getDownloadUrl(videoId) {
   return `${API_BASE}/download/${encodeURIComponent(videoId)}`;
 }
+
+export function getFileUrl(fileId) {
+  return `${API_BASE}/download/file/${encodeURIComponent(fileId)}`;
+}
