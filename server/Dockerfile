@@ -6,8 +6,8 @@ RUN apt-get update \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user for security
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+# Create a non-root user for security (with home directory for yt-dlp cache)
+RUN groupadd -r appgroup && useradd -r -g appgroup -m -d /home/appuser appuser
 
 WORKDIR /app
 
@@ -30,6 +30,10 @@ RUN node -e "const p = require('path').join(__dirname,'node_modules','yt-dlp-exe
 
 # Remove unnecessary files from the image
 RUN rm -f Dockerfile apprunner.yaml .dockerignore
+
+# Create writable cache and tmp directories for appuser
+RUN mkdir -p /home/appuser/.cache/yt-dlp /tmp/yt-mp3 \
+    && chown -R appuser:appgroup /home/appuser /tmp/yt-mp3
 
 # Switch to non-root user
 USER appuser

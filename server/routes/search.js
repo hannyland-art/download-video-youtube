@@ -2,6 +2,7 @@ const express = require("express");
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 const https = require("https");
 const http = require("http");
 
@@ -98,6 +99,7 @@ router.post("/", async (req, res) => {
     // Build yt-dlp args for search
     const args = [
       "--js-runtimes", `node:${nodePath}`,
+      "--cache-dir", path.join(os.homedir(), ".cache", "yt-dlp"),
       `ytsearch10:${query.trim()}`,  // Search YouTube for top 10 results
       "--dump-json",                  // Output JSON for each result
       "--flat-playlist",              // Don't download, just get metadata

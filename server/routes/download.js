@@ -50,6 +50,7 @@ function getCommonArgs() {
   const args = [
     "--ffmpeg-location", ffmpegPath,
     "--js-runtimes", `node:${nodePath}`,
+    "--cache-dir", path.join(os.homedir(), ".cache", "yt-dlp"),
   ];
   if (fs.existsSync(cookiesPath)) args.push("--cookies", cookiesPath);
   if (proxyUrl) args.push("--proxy", proxyUrl);
@@ -204,6 +205,7 @@ router.post("/:videoId", async (req, res) => {
         ytDlpProc = spawn(ytDlpPath, [
           ...commonArgs,
           url,
+          "-f", "ba/b",             // best audio, fallback to any best format (avoids 403 on specific formats)
           "-x",
           "--audio-format", "mp3",
           "--audio-quality", "192K",
