@@ -184,16 +184,25 @@ router.post("/:videoId", async (req, res) => {
     sendEvent("progress", { phase: "info", percent: 5, message: "Starting download..." });
 
     // --- Phase 2: Download and convert with progress (with retry) ---
+    // Each retry uses a different strategy to work around proxy IP rotation + YouTube 403
     const DL_TIMEOUT = 10 * 60 * 1000; // 10 min per attempt
-    const MAX_RETRIES = 2; // up to 3 total attempts
+    const strategies = [
+      // Strategy 1: best audio, normal
+      { format: "ba/b", extraArgs: [] },
+      // Strategy 2: prefer HLS streams (m3u8 URLs are less IP-restricted)
+      { format: "ba[protocol=m3u8_native]/ba[protocol=m3u8]/ba/b", extraArgs: ["--hls-prefer-native"] },
+      // Strategy 3: use web player client (different URL signing)
+      { format: "ba/b", extraArgs: ["--extractor-args", "youtube:player_client=web"] },
+    ];
     let actualFile = null;
     let lastError = "";
 
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    for (let attempt = 0; attempt < strategies.length; attempt++) {
       if (aborted) { cleanupFile(tempFile); return; }
 
+      const strategy = strategies[attempt];
       if (attempt > 0) {
-        sendEvent("progress", { phase: "retrying", percent: 5, message: `Retry ${attempt}/${MAX_RETRIES}... restarting download` });
+        sendEvent("progress", { phase: "retrying", percent: 5, message: `Retry ${attempt}/${strategies.length - 1}... trying different method` });
         cleanupFile(tempFile); // clean partial file from previous attempt
       }
 
@@ -201,11 +210,14 @@ router.post("/:videoId", async (req, res) => {
       let dlStderr = "";
       let timedOut = false;
 
+      console.log(`Attempt ${attempt + 1}: format="${strategy.format}", extraArgs=[${strategy.extraArgs.join(", ")}]`);
+
       await new Promise((resolve) => {
         ytDlpProc = spawn(ytDlpPath, [
           ...commonArgs,
+          ...strategy.extraArgs,
           url,
-          "-f", "ba/b",             // best audio, fallback to any best format (avoids 403 on specific formats)
+          "-f", strategy.format,
           "-x",
           "--audio-format", "mp3",
           "--audio-quality", "192K",
@@ -296,7 +308,7 @@ router.post("/:videoId", async (req, res) => {
 
     if (!actualFile) {
       console.error("All attempts failed. Last error:", lastError);
-      sendEvent("error", { message: `Download failed after ${MAX_RETRIES + 1} attempts: ${lastError}` });
+      sendEvent("error", { message: `Download failed after ${strategies.length} attempts: ${lastError}` });
       cleanupFile(tempFile);
       res.end();
       return;
