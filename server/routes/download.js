@@ -182,87 +182,120 @@ router.post("/:videoId", async (req, res) => {
 
     sendEvent("progress", { phase: "info", percent: 5, message: "Starting download..." });
 
-    // --- Phase 2: Download and convert with progress ---
-    await new Promise((resolve) => {
-      ytDlpProc = spawn(ytDlpPath, [
-        ...commonArgs,
-        url,
-        "-x",
-        "--audio-format", "mp3",
-        "--audio-quality", "192K",
-        "-o", tempFile,
-        "--no-playlist",
-        "--no-part",
-        "--force-overwrites",
-        "--newline",              // Output progress on new lines (easier to parse)
-      ]);
+    // --- Phase 2: Download and convert with progress (with retry) ---
+    const DL_TIMEOUT = 10 * 60 * 1000; // 10 min per attempt
+    const MAX_RETRIES = 2; // up to 3 total attempts
+    let actualFile = null;
+    let lastError = "";
 
-      let stderr = "";
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (aborted) { cleanupFile(tempFile); return; }
 
-      ytDlpProc.stdout.on("data", (data) => {
-        const text = data.toString();
-        // Parse yt-dlp progress lines: [download]  45.2% of ~5.23MiB ...
-        const match = text.match(/\[download\]\s+([\d.]+)%/);
-        if (match && !aborted) {
-          const dlPercent = parseFloat(match[1]);
-          // Map download 0-100% to overall 5-80%
-          const overall = Math.round(5 + (dlPercent * 0.75));
-          sendEvent("progress", { phase: "downloading", percent: overall, message: `Downloading... ${Math.round(dlPercent)}%` });
-        }
+      if (attempt > 0) {
+        sendEvent("progress", { phase: "retrying", percent: 5, message: `Retry ${attempt}/${MAX_RETRIES}... restarting download` });
+        cleanupFile(tempFile); // clean partial file from previous attempt
+      }
 
-        // Detect conversion phase
-        if (text.includes("[ExtractAudio]") && !aborted) {
-          sendEvent("progress", { phase: "converting", percent: 85, message: "Converting to MP3..." });
-        }
-        if (text.includes("[Merger]") && !aborted) {
-          sendEvent("progress", { phase: "converting", percent: 88, message: "Merging audio..." });
-        }
+      let dlExitCode = -1;
+      let dlStderr = "";
+      let timedOut = false;
+
+      await new Promise((resolve) => {
+        ytDlpProc = spawn(ytDlpPath, [
+          ...commonArgs,
+          url,
+          "-x",
+          "--audio-format", "mp3",
+          "--audio-quality", "192K",
+          "-o", tempFile,
+          "--no-playlist",
+          "--no-part",
+          "--force-overwrites",
+          "--newline",              // Output progress on new lines (easier to parse)
+        ]);
+
+        ytDlpProc.stdout.on("data", (data) => {
+          const text = data.toString();
+          console.log("yt-dlp stdout:", text.trim());
+          const match = text.match(/\[download\]\s+([\d.]+)%/);
+          if (match && !aborted) {
+            const dlPercent = parseFloat(match[1]);
+            const overall = Math.round(5 + (dlPercent * 0.75));
+            sendEvent("progress", { phase: "downloading", percent: overall, message: `Downloading... ${Math.round(dlPercent)}%` });
+          }
+          if (text.includes("[ExtractAudio]") && !aborted) {
+            sendEvent("progress", { phase: "converting", percent: 85, message: "Converting to MP3..." });
+          }
+          if (text.includes("[Merger]") && !aborted) {
+            sendEvent("progress", { phase: "converting", percent: 88, message: "Merging audio..." });
+          }
+        });
+
+        ytDlpProc.stderr.on("data", (data) => {
+          const text = data.toString();
+          dlStderr += text;
+          console.error("yt-dlp stderr:", text.trim());
+          const match = text.match(/\[download\]\s+([\d.]+)%/);
+          if (match && !aborted) {
+            const dlPercent = parseFloat(match[1]);
+            const overall = Math.round(5 + (dlPercent * 0.75));
+            sendEvent("progress", { phase: "downloading", percent: overall, message: `Downloading... ${Math.round(dlPercent)}%` });
+          }
+        });
+
+        ytDlpProc.on("error", (err) => {
+          console.error("yt-dlp process error:", err.message);
+          resolve();
+        });
+        ytDlpProc.on("close", (code) => {
+          dlExitCode = code;
+          resolve();
+        });
+
+        setTimeout(() => {
+          timedOut = true;
+          try { ytDlpProc.kill(); } catch { /* ignore */ }
+          resolve();
+        }, DL_TIMEOUT);
       });
 
-      ytDlpProc.stderr.on("data", (data) => {
-        stderr += data.toString();
-        const text = data.toString();
-        // yt-dlp sometimes outputs progress on stderr too
-        const match = text.match(/\[download\]\s+([\d.]+)%/);
-        if (match && !aborted) {
-          const dlPercent = parseFloat(match[1]);
-          const overall = Math.round(5 + (dlPercent * 0.75));
-          sendEvent("progress", { phase: "downloading", percent: overall, message: `Downloading... ${Math.round(dlPercent)}%` });
+      ytDlpProc = null;
+
+      if (aborted) { cleanupFile(tempFile); return; }
+
+      if (timedOut) {
+        lastError = "Download timed out (proxy may be too slow for this file size)";
+        console.error(`Attempt ${attempt + 1}: timed out`);
+        continue; // retry
+      }
+
+      // Find the output file — yt-dlp may add/change extensions
+      const basePath = tempFile.replace(/\.mp3$/, "");
+      const candidates = [tempFile, basePath + ".mp3", basePath, basePath + ".m4a", basePath + ".webm", basePath + ".opus"];
+      for (const candidate of candidates) {
+        if (fs.existsSync(candidate) && fs.statSync(candidate).size > 0) {
+          actualFile = candidate;
+          break;
         }
-      });
+      }
 
-      ytDlpProc.on("error", () => resolve());
-      ytDlpProc.on("close", () => resolve());
+      if (actualFile) break; // success!
 
-      setTimeout(() => {
-        try { ytDlpProc.kill(); } catch { /* ignore */ }
-        resolve();
-      }, 120000);
-    });
-
-    ytDlpProc = null;
-
-    if (aborted) { cleanupFile(tempFile); return; }
+      // Extract error for logging / retry decision
+      const errorLines = dlStderr.split("\n").filter(l => l.includes("ERROR") || l.includes("error")).join(" | ");
+      lastError = errorLines
+        ? errorLines.substring(0, 300)
+        : (dlExitCode !== 0 ? `yt-dlp exited with code ${dlExitCode}` : "No output file produced");
+      console.error(`Attempt ${attempt + 1} failed:`, lastError);
+    }
 
     // --- Phase 3: Verify output ---
     sendEvent("progress", { phase: "finalizing", percent: 92, message: "Finalizing..." });
 
-    let actualFile = tempFile;
-    if (!fs.existsSync(tempFile)) {
-      const altFile = tempFile.replace(/\.mp3$/, "") + ".mp3";
-      if (fs.existsSync(altFile)) {
-        actualFile = altFile;
-      } else {
-        sendEvent("error", { message: "Failed to download or convert the audio." });
-        res.end();
-        return;
-      }
-    }
-
-    const stat = fs.statSync(actualFile);
-    if (stat.size === 0) {
-      cleanupFile(actualFile);
-      sendEvent("error", { message: "Download produced an empty file." });
+    if (!actualFile) {
+      console.error("All attempts failed. Last error:", lastError);
+      sendEvent("error", { message: `Download failed after ${MAX_RETRIES + 1} attempts: ${lastError}` });
+      cleanupFile(tempFile);
       res.end();
       return;
     }
