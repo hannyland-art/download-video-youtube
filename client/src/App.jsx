@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import LoginPage from "./components/LoginPage";
 import SearchBar from "./components/SearchBar";
 import ResultsList from "./components/ResultsList";
@@ -10,10 +10,44 @@ function App() {
   const [results, setResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [autoLoginDone, setAutoLoginDone] = useState(false);
 
-  const handleLogin = (newToken) => {
+  // Auto-login on page load using saved credentials
+  useEffect(() => {
+    const saved = localStorage.getItem("credentials");
+    if (!saved) {
+      setAutoLoginDone(true);
+      return;
+    }
+
+    (async () => {
+      try {
+        const { username, password } = JSON.parse(saved);
+        const response = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await response.json();
+        if (response.ok) {
+          setToken(data.token);
+          setAuthToken(data.token);
+        } else {
+          // Saved credentials are no longer valid
+          localStorage.removeItem("credentials");
+        }
+      } catch {
+        // Server unreachable, show login page
+      }
+      setAutoLoginDone(true);
+    })();
+  }, []);
+
+  const handleLogin = (newToken, username, password) => {
     setToken(newToken);
     setAuthToken(newToken);
+    // Save credentials for auto-login next time
+    localStorage.setItem("credentials", JSON.stringify({ username, password }));
   };
 
   const handleLogout = () => {
@@ -21,6 +55,7 @@ function App() {
     setAuthToken(null);
     setResults([]);
     setError("");
+    localStorage.removeItem("credentials");
   };
 
   const handleSearch = async (query) => {
@@ -46,6 +81,11 @@ function App() {
       setIsLoading(false);
     }
   };
+
+  // Show nothing while auto-login is in progress (avoids login page flash)
+  if (!autoLoginDone) {
+    return null;
+  }
 
   if (!token) {
     return <LoginPage onLogin={handleLogin} />;

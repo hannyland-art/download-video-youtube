@@ -26,7 +26,7 @@ export default function LoginPage({ onLogin }) {
         return;
       }
 
-      onLogin(data.token);
+      onLogin(data.token, username, password);
     } catch {
       setError("Connection error. Please try again.");
     }

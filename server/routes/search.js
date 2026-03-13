@@ -12,7 +12,7 @@ const proxyUrl = process.env.PROXY_URL || "";
 // Lazily create the proxy agent only if PROXY_URL is configured
 let proxyAgent = null;
 if (proxyUrl) {
-  const { HttpsProxyAgent } = require("https-proxy-agent");
+  const HttpsProxyAgent = require("https-proxy-agent");
   proxyAgent = new HttpsProxyAgent(proxyUrl);
   console.log("Search route: using proxy for YouTube requests");
 }
