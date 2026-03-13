@@ -21,6 +21,9 @@ RUN npm ci --omit=dev \
 # Copy application code
 COPY . .
 
+# Update yt-dlp to the latest nightly (npm package may bundle an older version)
+RUN node -e "const p = require('path').join(__dirname,'node_modules','yt-dlp-exec','bin','yt-dlp'); const {execSync} = require('child_process'); console.log(execSync(p + ' -U --update-to nightly').toString().trim());"
+
 # Verify yt-dlp and ffmpeg-static binaries work
 RUN node -e "const p = require('ffmpeg-static'); const {execSync} = require('child_process'); console.log('ffmpeg:', execSync(p + ' -version').toString().split('\n')[0]);"
 RUN node -e "const p = require('path').join(__dirname,'node_modules','yt-dlp-exec','bin','yt-dlp'); const {execSync} = require('child_process'); console.log('yt-dlp:', execSync(p + ' --version').toString().trim());"

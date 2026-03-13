@@ -17,6 +17,10 @@ const nodePath = process.execPath;
 // Path to the optional cookies file (place cookies.txt in the server/ directory)
 const cookiesPath = path.join(__dirname, "..", "cookies.txt");
 
+// Optional proxy URL for routing yt-dlp traffic through a residential proxy
+// Set PROXY_URL env var, e.g.: http://user:pass@gate.smartproxy.com:7777
+const proxyUrl = process.env.PROXY_URL || "";
+
 /**
  * Spawn a process and wait for it to finish.
  * Returns { code, stderr }.
@@ -114,6 +118,11 @@ router.get("/:videoId", async (req, res) => {
     // Add cookies if the file exists (needed for YouTube bot detection on cloud servers)
     if (fs.existsSync(cookiesPath)) {
       ytDlpCommonArgs.push("--cookies", cookiesPath);
+    }
+
+    // Route through residential proxy if configured (avoids datacenter IP detection)
+    if (proxyUrl) {
+      ytDlpCommonArgs.push("--proxy", proxyUrl);
     }
 
     // --- Step 1: Get the video title via JSON ---
