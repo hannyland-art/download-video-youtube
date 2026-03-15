@@ -43,7 +43,7 @@ function authMiddleware(req, res, next) {
 // Routes
 app.use("/api/search", authMiddleware, searchRouter);
 app.use("/api/download", downloadRouter);
-app.use("/api/email", authMiddleware, createEmailRouter(completedFiles));
+app.use("/api/email", createEmailRouter(completedFiles));
 
 // Health check — App Runner pings "/" by default
 app.get("/", (req, res) => {
