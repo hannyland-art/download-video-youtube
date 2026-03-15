@@ -91,14 +91,36 @@
 /*  Logout Button           */
 /* ======================== */
 
+.user-info {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.username {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  color: #f0f0f0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .logout-btn {
-  margin-top: 0.8rem;
-  padding: 0.4rem 1.2rem;
+  padding: 0.5rem 1.2rem;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
+  font-weight: 500;
   cursor: pointer;
-  background: transparent;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
   color: #aaa;
   transition: all 0.2s;
 }
@@ -106,6 +128,9 @@
 .logout-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 /* ======================== */
@@ -120,6 +145,7 @@
   background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
   color: #f0f0f0;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  position: relative;
 }
 
 .app-header {
@@ -356,6 +382,245 @@
 }
 
 /* ======================== */
+/*  Card Actions Row        */
+/* ======================== */
+
+.card-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* ======================== */
+/*  Email Button            */
+/* ======================== */
+
+.email-btn {
+  align-self: flex-start;
+  padding: 0.45rem 1rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: linear-gradient(135deg, #ff6fd8, #3813c2);
+  color: #fff;
+  transition: opacity 0.2s;
+}
+
+.email-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.email-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: linear-gradient(135deg, #888, #aaa);
+}
+
+/* ======================== */
+/*  Email Modal             */
+/* ======================== */
+
+.email-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.email-modal {
+  background: #1e1b3a;
+  border-radius: 20px;
+  padding: 2rem;
+  width: 90%;
+  max-width: 420px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.email-modal h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.3rem;
+  background: linear-gradient(90deg, #ff6fd8, #3813c2);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.email-modal-song {
+  color: #aaa;
+  font-size: 0.9rem;
+  margin: 0 0 1.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.email-input {
+  width: 100%;
+  padding: 0.85rem 1.2rem;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f0f0f0;
+  outline: none;
+  transition: background 0.2s;
+  box-sizing: border-box;
+}
+
+.email-input::placeholder {
+  color: #888;
+}
+
+.email-input:focus {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.email-modal-actions {
+  display: flex;
+  gap: 0.8rem;
+  margin-top: 1.2rem;
+  justify-content: center;
+}
+
+.email-cancel-btn {
+  padding: 0.7rem 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  background: transparent;
+  color: #aaa;
+  transition: all 0.2s;
+}
+
+.email-cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.email-send-btn {
+  padding: 0.7rem 1.5rem;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: linear-gradient(135deg, #ff6fd8, #3813c2);
+  color: #fff;
+  transition: opacity 0.2s;
+}
+
+.email-send-btn:hover {
+  opacity: 0.85;
+}
+
+/* ======================== */
+/*  Toast Notification      */
+/* ======================== */
+
+.toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 2000;
+  min-width: 320px;
+  max-width: 500px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  animation: toastSlideIn 0.3s ease-out;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+@keyframes toastSlideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.toast-success {
+  background: linear-gradient(135deg, #00c9ff, #92fe9d);
+  color: #111;
+}
+
+.toast-error {
+  background: linear-gradient(135deg, #ff6b6b, #ff8787);
+  color: #fff;
+}
+
+.toast-content {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 1rem 1.2rem;
+}
+
+.toast-icon {
+  font-size: 1.5rem;
+  font-weight: bold;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  font-weight: 700;
+}
+
+.toast-message {
+  flex: 1;
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.toast-close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.toast-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+  opacity: 1;
+}
+
+.toast-success .toast-close {
+  color: #111;
+}
+
+.toast-error .toast-close {
+  color: #fff;
+}
+
+/* ======================== */
 /*  Responsive              */
 /* ======================== */
 
@@ -375,5 +640,30 @@
 
   .video-title {
     white-space: normal;
+  }
+
+  .toast {
+    right: 10px;
+    left: 10px;
+    min-width: auto;
+    max-width: none;
+  }
+
+  .user-info {
+    top: 10px;
+    left: 10px;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+
+  .username {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.8rem;
+  }
+
+  .logout-btn {
+    font-size: 0.75rem;
+    padding: 0.4rem 1rem;
   }
 }

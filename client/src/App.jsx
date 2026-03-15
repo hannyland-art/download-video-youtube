@@ -7,6 +7,7 @@ import "./App.css";
 
 function App() {
   const [token, setAuthToken] = useState(null);
+  const [username, setUsername] = useState(null);
   const [results, setResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -32,6 +33,7 @@ function App() {
         if (response.ok) {
           setToken(data.token);
           setAuthToken(data.token);
+          setUsername(username);
         } else {
           // Saved credentials are no longer valid
           localStorage.removeItem("credentials");
@@ -46,6 +48,7 @@ function App() {
   const handleLogin = (newToken, username, password) => {
     setToken(newToken);
     setAuthToken(newToken);
+    setUsername(username);
     // Save credentials for auto-login next time
     localStorage.setItem("credentials", JSON.stringify({ username, password }));
   };
@@ -53,6 +56,7 @@ function App() {
   const handleLogout = () => {
     setToken(null);
     setAuthToken(null);
+    setUsername(null);
     setResults([]);
     setError("");
     localStorage.removeItem("credentials");
@@ -93,12 +97,15 @@ function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
-        <h1>YouTube MP3 Downloader</h1>
-        <p>Search for a song and download it as MP3</p>
+      <div className="user-info">
+        <span className="username">👤 {username}</span>
         <button className="logout-btn" onClick={handleLogout}>
           Logout
         </button>
+      </div>
+      <header className="app-header">
+        <h1>YouTube MP3 Downloader</h1>
+        <p>Search for a song and download it as MP3</p>
       </header>
 
       <main className="app-main">

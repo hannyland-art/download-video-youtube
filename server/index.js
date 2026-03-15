@@ -3,6 +3,8 @@ const cors = require("cors");
 const crypto = require("crypto");
 const searchRouter = require("./routes/search");
 const downloadRouter = require("./routes/download");
+const { completedFiles } = require("./routes/download");
+const createEmailRouter = require("./routes/email");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,7 +14,7 @@ app.use(cors());
 app.use(express.json());
 
 // --- Simple auth ---
-const USERS = { shuli: "1" };
+const USERS = { shuli: "1" ,ruti: "1"};
 const tokens = new Set();
 
 app.post("/api/login", (req, res) => {
@@ -41,6 +43,7 @@ function authMiddleware(req, res, next) {
 // Routes
 app.use("/api/search", authMiddleware, searchRouter);
 app.use("/api/download", downloadRouter);
+app.use("/api/email", authMiddleware, createEmailRouter(completedFiles));
 
 // Health check — App Runner pings "/" by default
 app.get("/", (req, res) => {
