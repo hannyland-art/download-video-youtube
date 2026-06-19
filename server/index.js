@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
+const healthRouter = require("./routes/health");
 const searchRouter = require("./routes/search");
 const downloadRouter = require("./routes/download");
 const { completedFiles } = require("./routes/download");
@@ -12,6 +13,10 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Health checks — no auth (used by ECS/ALB/Docker)
+app.use("/health", healthRouter);
+app.use("/api/health", healthRouter);
 
 // --- Simple auth ---
 const USERS = { shuli: "1" ,ruti: "1"};
@@ -45,15 +50,11 @@ app.use("/api/search", authMiddleware, searchRouter);
 app.use("/api/download", downloadRouter);
 app.use("/api/email", createEmailRouter(completedFiles));
 
-// Health check — App Runner pings "/" by default
-app.get("/", (req, res) => {
+// Simple liveness probe (fast, no dependency checks)
+app.get("/", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok" });
-});
-
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
