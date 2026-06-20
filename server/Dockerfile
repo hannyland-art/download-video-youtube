@@ -14,19 +14,24 @@ WORKDIR /app
 # Copy package files first (leverages Docker layer caching)
 COPY package*.json ./
 
+# Skip yt-dlp-exec postinstall (async download is unreliable in Docker)
+ENV YOUTUBE_DL_SKIP_DOWNLOAD=1
+
 # Install production dependencies only
 RUN npm ci --omit=dev \
     && npm cache clean --force
 
+# Download yt-dlp explicitly (yt-dlp-exec postinstall often fails silently in CI/CloudShell)
+RUN mkdir -p node_modules/yt-dlp-exec/bin \
+    && curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
+        -o node_modules/yt-dlp-exec/bin/yt-dlp \
+    && chmod +x node_modules/yt-dlp-exec/bin/yt-dlp \
+    && node_modules/yt-dlp-exec/bin/yt-dlp -U --update-to nightly \
+    && echo "yt-dlp: $(node_modules/yt-dlp-exec/bin/yt-dlp --version)" \
+    && node -e "const p=require('ffmpeg-static'); require('child_process').execSync(p+' -version',{stdio:'inherit'})"
+
 # Copy application code
 COPY . .
-
-# Update yt-dlp to the latest nightly (npm package may bundle an older version)
-RUN node -e "const p = require('path').join(__dirname,'node_modules','yt-dlp-exec','bin','yt-dlp'); const {execSync} = require('child_process'); console.log(execSync(p + ' -U --update-to nightly').toString().trim());"
-
-# Verify yt-dlp and ffmpeg-static binaries work
-RUN node -e "const p = require('ffmpeg-static'); const {execSync} = require('child_process'); console.log('ffmpeg:', execSync(p + ' -version').toString().split('\n')[0]);"
-RUN node -e "const p = require('path').join(__dirname,'node_modules','yt-dlp-exec','bin','yt-dlp'); const {execSync} = require('child_process'); console.log('yt-dlp:', execSync(p + ' --version').toString().trim());"
 
 # Remove unnecessary files from the image
 RUN rm -f Dockerfile apprunner.yaml .dockerignore
